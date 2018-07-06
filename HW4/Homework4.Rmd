@@ -1,0 +1,396 @@
+---
+title: "Homework Assignment 4"
+author: "Ryan Avery, Meet Gala"
+date: "6/3/2018"
+output: pdf_document
+---
+
+```{r setup, echo=FALSE}
+library(knitr)
+# set global chunk options: images will be 7x5 inches
+knitr::opts_chunk$set(fig.width=7, fig.height=5)
+options(digits = 4)
+
+
+## indents are for indenting r code as formatted text
+## They may need to be adjusted depending on your OS
+# if your output looks odd, increase or decrease indent
+indent1 = '    '
+indent2 = '        '
+indent3 = '            '
+```
+
+```{r}
+library(tidyverse)
+library(tree)
+library(randomForest)
+library(gbm)
+library(ROCR)
+library(e1071)
+library(ISLR)
+library(imager)
+```
+Question 1
+a)
+
+$$ P ( j \notin S)\ where\ S \ is \ a  \ sample \ of \ size  \ n \ (with \ replacement) \ and \ j \in P \ where \ P \ is \ the  \ Population. $$
+This probability can be interpreted as the number of ways N spots can be filled with anything else but element j. Or :
+
+$$ P ( j \notin S) =  \bigg(\frac {n-1}{n} \bigg) ^n $$ 
+
+b)
+For n = 1000, this probability is: 
+
+$$ P ( j \notin S) =  \bigg(\frac {999}{1000} \bigg) ^{1000}  =  0.3676954.$$ 
+c)
+```{r,cache=TRUE}
+x <- c(1:1000)
+length(unique(sample(x,1000,replace=TRUE)))
+```
+Here We see that a little over 600 unique values are sampled. Which is very close to the expected 63.2%
+
+  d) 
+```{r percentage, indent=indent2, cache=TRUE}
+population = c(rep(0,50),rep(1,51))
+means <- vector()
+for (i in 1:1000){
+xboot <- sample(population, replace = TRUE)
+means[i] <- mean(xboot)
+}
+
+hist(means)
+```
+Confidence Interval
+```{r age-data, out.width='0.4\\linewidth', fig.show='hold', indent=indent1}
+print(quantile(means, probs = c(0.025,0.975)))
+```
+Regression to the mean is the reason you'd expect his end of season percentage to be lower than start of season, as his start of season percentage was abnormally good. As time goes on, it is mor elikely that covington will shoot at the average rate rather than the abnormally good rate he has been keeping up. Below we use bootstrap resampling to get the condifdence interval of the true percentage.
+
+Question 2
+```{r}
+
+# Transforming the data in 1 matrix of 10,000 features. 
+load("faces_array.RData")
+face_mat <- sapply(1:1000, function(i) as.numeric(faces_array[, , i])) %>% t
+
+plot_face <- function(image_vector) {
+plot(as.cimg(t(matrix(image_vector, ncol=100))), axes=FALSE, asp=1)
+}
+
+```
+a) Below is the "Average" face
+```{r}
+avg_face=colMeans(face_mat, na.rm = FALSE, dims = 1)
+plot_face(avg_face)
+```
+b)
+```{r,}
+pr.out=prcomp((face_mat),center = TRUE, scale = FALSE)
+
+```
+
+```{r}
+pr.var=pr.out$sdev ^2
+pve=pr.var/sum(pr.var)
+plot(pve[1:5]*100, xlab="Principal Component",
+ylab="Proportion of Variance Explained (Percent)", ylim=c(0,50),type='b')
+
+```
+```{r}
+plot(cumsum(pve[0:10])*100, xlab="Principal Component ",
+ylab=" Cumulative Proportion of Variance Explained ", ylim=c(0,100), type='b')
+
+cumsum(pve[1:5])[5]*100
+
+```
+We need 5 Principal components to explain 50% of the variance.
+
+c) Below are the 16 main prinicipal component representations.
+```{r}
+par(mar=rep(0.5,4), mfrow = c(4,4))
+for (i in 1:16)
+  plot_face(pr.out$rotation[,i])
+```
+
+d)
+
+```{r}
+par(mar=rep(0.5,4), mfrow = c(4,4))
+faces_pc1<-face_mat[order(pr.out$x[,1]),]
+#par(mar=rep(0.5,4), mfrow = c(4,4))
+for (i in 1:5)
+  plot_face(faces_pc1[i,])
+
+```
+```{r}
+par(mar=rep(0.5,4), mfrow = c(4,4))
+for (i in 996:1000)
+  plot_face(faces_pc1[i,])
+
+```
+
+The First 5 images (low PC1 values), represent a large difference between the face (center or the image) and the background. The last 5 images, (High PC1 values) represent a smaller difference between the face and the background.
+
+e)
+```{r}
+  
+faces_pc5<-face_mat[order(pr.out$x[,5]),]
+#par(mar=rep(0.5,4), mfrow = c(4,4))
+par(mar=rep(0.5,4), mfrow = c(4,4))
+for (i in 996:1000)
+  plot_face(faces_pc5[i,])
+```
+
+
+```{r}
+par(mar=rep(0.5,4), mfrow = c(4,4))
+for (i in 1:5)
+  plot_face(faces_pc5[i,])
+
+```
+The First 5 images (low PC5 values), represent a people with long hair. The last 5 images, (High PC5 values) represent a people with short hair.
+
+f)
+
+Below are umages retirved after compression
+```{r}
+dim(pr.out$x)
+par(mfrow=c(1, 5))
+
+
+k=sample(1000,1)  #taking a random image to plot using compression
+  for (i in c(10,50,100,300)){
+    compression<-pr.out$x[,1:i] %*% t(pr.out$rotation)[1:i,]
+    plot_face(compression[k,])+avg_face}
+  
+```
+
+Question 3
+
+a)
+```{r}
+Caravan.train <- Caravan[1:1000,]
+Caravan.test <- Caravan[1001:5822,]
+```
+
+b)
+```{r}
+set.seed(1)
+boost.caravan  = gbm(ifelse(Purchase=="Yes",1,0)~., data=Caravan.train,
+                     distribution="bernoulli", n.trees=500, interaction.depth=4, shrinkage = 0.01 )
+```
+
+
+```{r}
+summary(boost.caravan)
+```
+The Variables PPERSAUT and MOPHLOOG appear to be the most important.
+
+c)
+```{r}
+rf.caravan = randomForest(Purchase ~ ., data=Caravan.train, mtry=3, ntree=500, importance=TRUE)
+rf.caravan
+```
+
+The Out of bag error rate is 5.8%.
+3 Variables vere subsampled at each split.
+500 trees were used to develop this forest.
+
+```{r}
+k<-(importance(rf.caravan))
+k[order(k[,3]),]
+```
+
+```{r}
+varImpPlot(rf.caravan)
+```
+
+Above is the list of the varibale imporance (sorted by Decrease in Accuracy) in the Random forset model and it is very different from our boosting model. MOPLHOOG is the second most important for boosting and 3rd most important for Random Forests. Apart from that there is not much similarity in variable importance between the two models.
+
+d)
+```{r}
+
+yhat.boost = as.factor(ifelse(predict(boost.caravan, newdata = Caravan.test, n.trees=500, type = "response")>0.2,"Yes","No"))
+boost.err = table(pred = yhat.boost, truth = Caravan.test$Purchase)
+
+boost.err
+```
+
+```{r}
+yhat.rf = predict (rf.caravan, newdata = Caravan.test)
+rf.err = table(pred = yhat.rf, truth = Caravan.test$Purchase)
+rf.err
+rf.err[2,2]/sum(rf.err[2,])
+```
+
+
+16.67% of the people predicted to make a purchase actually do.
+
+Question 4
+```{r}
+drug_use <- read_csv('drug.csv',
+col_names = c('ID','Age','Gender','Education','Country','Ethnicity',
+'Nscore','Escore','Oscore','Ascore','Cscore','Impulsive',
+'SS','Alcohol','Amphet','Amyl','Benzos','Caff','Cannabis',
+'Choc','Coke','Crack','Ecstasy','Heroin','Ketamine','Legalh','LSD',
+'Meth', 'Mushrooms', 'Nicotine', 'Semer','VSA'))
+cannabis_levels <- c("No","Yes")
+drug_use <- drug_use %>% 
+  mutate(recent_cannabis_use = factor(ifelse(Cannabis>='CL3',"Yes","No"))) 
+drug_use_subset <- drug_use %>% select(Age:SS, recent_cannabis_use)
+set.seed(1)
+train.indices = sample(1:nrow(drug_use_subset), 1500)
+drug_use_train=drug_use_subset[train.indices,]
+drug_use_test=drug_use_subset[-train.indices,]
+```
+
+A) Confusion matrix for predictions against test data with radial kernel cost = 1
+```{r}
+svmfit=svm(recent_cannabis_use ~ ., data=drug_use_train, kernel="radial", cost=1,scale=TRUE)
+cannabis_pred=predict(svmfit,drug_use_test)
+summary(svmfit)
+table(predict=cannabis_pred, truth=drug_use_test$recent_cannabis_use)
+```
+
+B) The optimal cost is .1. Optimal cost, training and test error and confusion matrix for the trianing and test data is below:
+```{r}
+
+tune.out=tune(svm,recent_cannabis_use~.,data=drug_use_train,kernel="radial",
+ranges=list(cost=c(.001,.01,.1,1,10,100)), scale=TRUE)
+bestmod=tune.out$best.model
+summary(bestmod)
+print("training error")
+cannabis_pred_train=predict(bestmod,drug_use_train)
+train_table = table(predict=cannabis_pred_train, truth=drug_use_train$recent_cannabis_use)
+print(train_table)
+train.err = 1 - sum(diag(train_table))/sum(train_table)
+print(train.err)
+print("test error")
+cannabis_pred_test=predict(bestmod,drug_use_test)
+test_table = table(predict=cannabis_pred_test, truth=drug_use_test$recent_cannabis_use)
+print(test_table)
+test.err = 1 - sum(diag(test_table))/sum(test_table)
+print(test.err)
+```
+
+C)
+
+```{r}
+class_counts = 0
+for (i in 1:200){
+ind = sample(nrow(drug_use_train),size=nrow(drug_use_train), replace = TRUE)
+train_boot = drug_use_train[ind,]
+svmfit=svm(recent_cannabis_use ~ ., data=train_boot, kernel="radial", cost=1,scale=TRUE)
+pred = predict(svmfit, drug_use_test)
+pred = ifelse(pred=="Yes", 1, 0)
+class_counts = class_counts + pred
+}
+
+```
+
+Below are the bootstrapped svm class probabilities for each observation.
+```{r}
+predicted_svm_probs = class_counts/200
+predicted_svm_probs
+```
+
+```{r}
+pred = prediction(predicted_svm_probs, drug_use_test$recent_cannabis_use)
+perf = performance(pred, measure="tpr", x.measure="fpr")
+plot(perf, col=2, lwd=3, main="ROC curve for bootstrapped SVM predicted probabilities on Test Data")
+abline(0,1)
+```
+
+Question 5
+
+a)
+
+```{r}
+nonlinear = read.csv("nonlinear.csv")
+qplot(nonlinear$X1,nonlinear$X2,color=nonlinear$Y)
+
+```
+
+b)
+```{r}
+# grid of points over sample space
+gr <- expand.grid(X1=seq(-5, 5, by=0.1), # sample points in X1
+                  X2=seq(-5, 5, by=0.1)) # sample points in X2
+```
+
+Below is the linear logistic regression decision boundry
+```{r}
+logistic.fit = glm(Y ~ X1 + X2 ,data=nonlinear, family=binomial)
+decision<-ifelse(predict(logistic.fit, gr, type="response")>0.5,1,0)
+qplot(x=gr[,1],y=gr[,2],color=decision,xlab = "X1",ylab = "X2")
+
+```
+c)
+
+```{r}
+X<-as.matrix(nonlinear[,2:3],nrow=36,ncol=2)
+nonlinear_poly=as.data.frame(poly(X,2,raw=TRUE))
+nonlinear_poly$Y=nonlinear$Y
+logistic.poly.fit = glm(Y ~. ,data=nonlinear_poly, family=binomial)
+decision<-ifelse(predict(logistic.poly.fit, as.data.frame(poly(as.matrix(gr),2,raw=TRUE)), type="response")>0.5,1,0)
+qplot(x=gr[,1],y=gr[,2],color=decision,xlab = "X1",ylab = "X2")
+
+summary(logistic.poly.fit)
+
+```
+
+Here we see an elliptical decision boundry. Which does not seem very un-resonable. However it is a bit variant on the data. A new point outside the ellipse would change the size of the decision boundry.
+
+We see three parameters that are outside the 5% confidence level which means our model is probably biased. 
+
+d)
+```{r}
+
+nonlinear_poly=as.data.frame(poly(X,5,raw=TRUE))[c(1:6,11,15,18,20)]
+nonlinear_poly$Y=nonlinear$Y
+logistic.poly.fit = glm(Y ~. ,data=nonlinear_poly, family=binomial)
+decision<-ifelse(predict(logistic.poly.fit, as.data.frame(poly(as.matrix(gr),5,raw=TRUE))[c(1:6,11,15,18,20)], type="response")>0.5,1,0)
+qplot(gr[,1],gr[,2],color=decision)
+
+summary(logistic.poly.fit)
+
+```
+Here we see an interesting and somewhat doubtful result. The Dark blue spots that are not in the cetral blob (where the existing ellipse was) would be classified as a "NO", but we know that there is no point there. Here any new data would change that boundry by a lot and hence we night be have high variability in our model. The coefficeients all are signifincant and lie within our confidence bounds, so we can trust this model to not be very biased.
+
+e) The coefficients for the X1^2, X2^2, and X1*X2 terms in the polynomial logistic model are all significant with a p value of less than .05. None of the coefficeints are significant for the 5th order polynomial model due to overfitting. The variance is extremely high for the 5th order polynomial model. On the converse, the bias is very high for the linear model, as the model is too simple and does not identify the circular clustering of the data. The 2nd order polynomial model strikes the best balance between complexity and simplicity, and thus the best balance between bias and variance.
+
+f)
+
+```{r}
+for (i in 1:3){
+  
+ind = sample(nrow(nonlinear_poly),size=nrow(nonlinear_poly), replace = TRUE)
+train_poly_boot = nonlinear_poly[ind,]
+
+X<-as.matrix(nonlinear[2:4],nrow=36,ncol=2)
+nonlinear_copy = as.data.frame(X)
+ind_lin = sample(nrow(nonlinear_copy),size=nrow(nonlinear_copy), replace = TRUE)
+train_lin_boot = nonlinear_copy[ind_lin,]
+
+logistic.poly.fit = glm(Y ~. ,data=train_poly_boot, family=binomial)
+logistic.fit = glm(Y ~ X1 + X2 ,data=train_lin_boot, family=binomial)
+
+decision<-ifelse(predict(logistic.poly.fit, as.data.frame(poly(as.matrix(gr),5,raw=TRUE))[c(1:6,11,15,18,20)], type="response")>0.5,1,0)
+print(qplot(gr[,1],gr[,2],color=decision, main=paste(c("Bootstrap Sample 5th Degree Poly Model Number", i), collapse = " ")))
+
+decision<-ifelse(predict(logistic.fit, gr, type="response")>0.5,1,0)
+print(qplot(gr[,1],gr[,2],color=decision, main=paste(c("Bootstrap Sample Linear Model Number", i), collapse = " ")))
+}
+```
+
+
+We see that for the 5th degree polynomial models there is a very high degree of variation in the curved boundaries, with especially bad predictions in the left hand side of the plot near side, top, and bottom edges for more than one plot. For the linear model, we see high bias and also high variance between samples, in two cases the decison boundary line is closer to vertical than diagonal. These plot clearly show the extrmely high variance of the 5th degree polynomial model and the high bias and considerable variance of the linear model.
+
+
+
+
+
+
+
+
+

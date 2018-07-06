@@ -1,0 +1,30 @@
+---
+title: "Lecture 2"
+output: html_notebook
+---
+
+Tibbles are dataframes with best practices
+
+[[]] to get a column
+[ to get indexed row]
+
+```{r}
+library(tidyverse)
+
+tib = tibble(x = 1:3, y = list(5, 10, 20))
+tib[['y']]
+
+
+
+```
+
+
+Preprocessing: 
+
+Feature creation, transformation, scaling, discretization
+
+Missing Data
+
+j and p for features ; i and n for samples
+
+

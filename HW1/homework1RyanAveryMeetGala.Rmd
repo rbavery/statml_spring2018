@@ -1,0 +1,441 @@
+---
+title: "Homework Assignment 1: Predicting Algae Blooms"
+author: "Ryan Avery and Meet Gala"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output: pdf_document
+---
+
+
+```{r setup, echo=FALSE}
+library(knitr)
+# set global chunk options: images will be 7x5 inches
+knitr::opts_chunk$set(fig.width=7, fig.height=5)
+options(digits = 4)
+
+
+## indents are for indenting r code as formatted text
+## They may need to be adjusted depending on your OS
+# if your output looks odd, increase or decrease indent
+indent1 = '    '
+indent2 = '        '
+indent3 = '            '
+```
+
+```{r load, include=FALSE}
+library(tidyverse)
+algae <- read_table2("algaeBloom.txt", col_names=
+  c('season','size','speed','mxPH','mnO2','Cl','NO3','NH4',
+  'oPO4','PO4','Chla','a1','a2','a3','a4','a5', 'a6', 'a7'),
+  na='XXXXXXX')
+
+glimpse(algae)
+```
+
+1. Descriptive Summary Statistics
+  a) Count the number of observations in each season using summarise() in dplyr
+```{r counts}
+algae %>%
+group_by(season) %>%
+dplyr::summarize(observation_count= n())
+```
+  b) Are there missing values? Calculate the mean and variance of each chemical. What do you notice about the magnitude of the two quantities for different chemicals?
+    
+  The following are the counts of no data values for each variable.
+    
+```{r no data count}
+algae %>%
+  select(c('mxPH','mnO2','Cl','NO3','NH4', 'oPO4','PO4','Chla')) %>%
+  summarise_all(function(x) sum(is.na(x))) %>% 
+  glimpse
+
+```
+
+```{r}
+print('Mean')
+means = algae %>% 
+  select(c('mxPH','mnO2','Cl','NO3','NH4', 'oPO4','PO4','Chla')) %>%
+  summarise_all(function (x) mean(x, na.rm=TRUE)) %>% 
+  glimpse
+print('Variance')
+vars = algae %>% 
+  select(c('mxPH','mnO2','Cl','NO3','NH4', 'oPO4','PO4','Chla')) %>% 
+  summarise_all(function (x) var(x, na.rm=TRUE)) %>% 
+  glimpse
+
+
+```
+
+  The magnitude of the variance varies more than the mean for the chemicals. The variance of NH4 is 2 orders of magnitude larger than the second largest variance (PO4) and is 7 orders of magnitude larger than the smallest variance (mxPH). The means generally have a lower magnitude than the variance, with the largst value being 501.3 for NH4 and the lowest being 3.282 for NO3. The rank (relative ordering) for each chemical is roughly the same between the variance and the mean values, with the only discrepency being the lower values: mxPH, mnO2 and NO3.
+
+  c) Computing median and Mean Absolute Deviation (MAD)
+  
+```{r}
+
+print("Medians")
+medians = algae %>% 
+  select(c('mxPH','mnO2','Cl','NO3','NH4', 'oPO4','PO4','Chla')) %>% 
+  summarise_all(function (x) median(x, na.rm=TRUE)) %>% 
+  glimpse
+print("MADs")
+mads = algae %>% 
+  select(c('mxPH','mnO2','Cl','NO3','NH4', 'oPO4','PO4','Chla')) %>% 
+  summarise_all(function (x) mad(x, na.rm=TRUE)) %>% 
+  glimpse
+
+```
+
+The difference between the means for certain chemicals, NO4, Cl, oPO4, and PO4 and the respective medians are much larger than the rest of the chemcials where the mean and median only differ by 10 or less. Likewise, MADs are much smaller than the variances for the chemicals mentioned. The data for the chemicals mentioned are very skewed toward large values.
+
+2. GGplot Visualizations
+  ab) Histogram of mxPH
+
+```{r, out.width='50%', fig.show='hold', indent=indent1, warning=FALSE}
+ggplot(data = algae, aes(x=mxPH, (..count..)/sum(..count..))) + 
+  geom_histogram(bins=38) + 
+  labs(title='Histogram of mxPH') +
+  ylab('Probability') +
+  scale_y_continuous(labels=scales::percent) +
+  geom_density() +
+  geom_rug(inherit.aes = FALSE, mapping=aes(mxPH))
+
+```
+
+  The distribution is skewed left, slightly.
+
+  c)
+```{r}
+
+ggplot(data=algae, aes(size, a1)) +
+  geom_boxplot(outlier.color='red') +
+  labs(title='A conditioned Boxplot of Algal a1')
+
+```
+
+  d)
+```{r, warning=FALSE}
+
+ggplot(data=algae, aes(x='NO3',y=NO3)) +
+  geom_boxplot(outlier.color='red') +
+  labs(title='A conditioned Boxplot of NO3')
+
+```
+
+```{r}
+ggplot(data=algae, aes(season,y=NO3)) +
+  geom_boxplot(outlier.color='red') +
+  labs(title='A conditioned Boxplot of NO3 Grouped by Season')
+
+```
+
+I chose to group my data by season to get a more descriptive look at the data's outliers. For NO3, it's clear that the single outlier in autumn is much more of an outlier than the outliers in the other seasons category. These outliers in seasons other than autumn all are grouped at around the same value and do not deviate that far from the IQR. Outliers are colored red if they are greater than the IQR*1.5. Because of this wide discrepency in "outlier-ness", I'd say that the only interested outlier is the single outlier in autumn. I decided to group by season since I expect that at certain times of the year, agricultural runoff brings nitrates found in fertilizer into the river we are examining. I also plotted the data without grouping for both chemicals.
+
+```{r}
+ggplot(data=algae, aes(x='NH4', NH4)) +
+  geom_boxplot(outlier.color='red') +
+  labs(title='A conditioned Boxplot of NH4')
+```
+
+
+```{r, warning=FALSE}
+
+ggplot(data=algae, aes(season, NH4)) +
+  geom_boxplot(outlier.color='red') +
+  labs(title='A conditioned Boxplot of NH4 Grouped by Season')
+
+```
+
+For NH4, we again see an outlier among outliers in autumn just like we saw the largest, more interesting outlier for NO3. What is different is that we see multiple interesting outliers that are far above the threshold of 1.5*IQR, across ALL seasons. Perhaps there is a more consistent source of ammonium in the environment than the nitrates.
+
+I chose to count the number of outliers if a single boxplot was computed for the whole dataset since it was easier. Just using select, filter, and count functions. There are 44 outliers for NO3 and 39 outliers for NH4, which would differ from the number of outliers if we grouped by season.
+
+```{r}
+algae %>% 
+  select(c('NO3')) %>% 
+  filter((NO3>quantile(NO3, .75, na.rm=TRUE)+1.5*IQR(NO3, na.rm=TRUE))|(NO3<quantile(NO3, .25, na.rm=TRUE)-1.5*IQR(NO3, na.rm=TRUE))) %>% 
+  dplyr::count()
+# should this be 
+algae %>% 
+  select(c('NH4')) %>% 
+  filter((NH4>quantile(NH4, .75, na.rm=TRUE)+1.5*IQR(NH4, na.rm=TRUE))|(NH4<quantile(NH4, .25, na.rm=TRUE)-1.5*IQR(NH4, na.rm=TRUE))) %>% 
+  dplyr::count()
+```
+
+  e)
+```{r}
+'Means'
+means %>% glimpse
+'Medians'
+medians %>% glimpse
+
+```
+```{r}
+'Variance'
+vars %>% glimpse
+'MAD'
+mads %>% glimpse
+```
+
+  It's clear that the magnitude of the difference between the mean and median is much higher for NH4 than NO3 as we saw in our plots. Likewise for Variance and MAD. Variance is much larger for both chemicals, but many orders of magnitude more for NH4. The median and the MAD is more descriptive for NO3 than the mean and variance, since one single value in autumn appears to be doing most of the skewing in that variable. However, So many interesting outliers are present for the NO4 variable, that it would be remiss to not consider the mean and variance as descriptive of some underlying process of interest. Median and MAD are more robust, since they are not as susceptible to change due to outliers.
+  
+## Dealing with Missing Values
+
+3. 
+
+  a) How many observations contain missing values? How many missing values are in each variable?
+
+```{r}
+"No Data Counts per Variable"
+nodatacounts = algae %>%
+  select(c('season','size','speed','mxPH','mnO2','Cl','NO3','NH4',
+  'oPO4','PO4','Chla','a1','a2','a3','a4','a5', 'a6', 'a7')) %>%
+  summarise_all(function(x) sum(is.na(x))) %>% 
+  glimpse
+
+"Number of Observations with No Data Values"
+sum(nodatacounts>0)
+
+```
+
+  There are 184 observations in algae.del. Is this the correct way to remove NaNs?
+  
+  b) Removing NA's
+```{r}
+algae.del = algae %>% 
+  filter_all(all_vars(!is.na(.)))
+count(algae.del)
+save(algae.del, file='algaeBloom_good.txt')
+```
+
+  c)
+  
+  
+```{r}
+# https://stackoverflow.com/questions/11971876/how-to-fill-na-with-median
+algae.med = algae %>%
+  mutate_at(.vars = c('mxPH','mnO2','Cl','NO3','NH4',
+  'oPO4','PO4','Chla'), .funs = funs(ifelse(is.na(.), median(., na.rm = TRUE), .)))
+
+save(algae.med, file='algaeBloom_medfill.txt')
+
+print('The number of observations is 200')
+
+# how to index and subset by columns?
+algae.med[48,]
+algae.med[62,]
+algae.med[199,]
+```
+
+  d) Imputing unknowns using correlations
+```{r}
+
+cortable = algae %>% 
+  select(c('mxPH','mnO2','Cl','NO3','NH4',
+  'oPO4','PO4','Chla','a1','a2','a3','a4','a5', 'a6', 'a7')) %>% 
+  cor(use = "complete.obs")
+
+POmodel <- lm(PO4 ~ oPO4, data = algae %>% select(c('PO4','oPO4')))
+oPO4 = algae %>% select(c('oPO4'))
+
+prediction28 = predict(POmodel, oPO4[28,])
+
+```
+
+```{r}
+algae[c('PO4')][28,] = prediction28
+algae[c('PO4')]
+```
+
+Question 4.
+
+a)
+```{r}
+IDs<-1:200
+G=cut(IDs,breaks=5,labels=FALSE)
+IDs=sample(200,200, replace=FALSE)
+grouper<-cbind(G,IDs) 
+grouper<-grouper[order(grouper[,2]),]
+algae.med$Group<-grouper[,1]
+rm(grouper,G,IDs)
+```
+
+```{r}
+do.chunk <- function(chunkid, chunkdef, dat){ # function argument
+train = (chunkdef != chunkid)
+Xtr = dat[train,1:11] # get training set
+Ytr = dat[train,12] # get true response values in trainig set
+Xvl = dat[!train,1:11] # get validation set
+Yvl = dat[!train,12] # get true response values in validation set
+
+lm.a1 <- lm(a1~., data = dat[train,1:12])
+predYtr = predict(lm.a1) # predict training values
+predYvl = predict(lm.a1,Xvl,na.rm=TRUE) # predict validation values
+data.frame(fold = chunkid,
+train.error = mean((predYtr - Ytr)^2), # compute and store training error
+val.error = mean((predYvl - Yvl)^2)) # compute and store test error
+}
+#do.chunk(1,algae.med$Group,algae.med)
+
+lapply(1:5,  FUN = do.chunk, chunkdef=algae.med$Group , dat=algae.med)
+```
+
+
+```{r}
+algae.Test <- read_table2('algaeTest.txt',
+col_names=c('season','size','speed','mxPH','mnO2','Cl','NO3',
+'NH4','oPO4','PO4','Chla','a1'),
+na=c('XXXXXXX'))
+```
+5)
+```{r}
+Xtr = algae.med[,1:11] # get training set
+Ytr = algae.med[,12] # get true response values in trainig set
+Xvl = algae.Test[,1:11] # get validation set
+Yvl = algae.Test[,12] # get true response values in validation set
+
+lm.a1 <- lm(a1~., data = algae.med[,1:12])
+predYtr = predict(lm.a1) # predict training values
+predYvl = predict(lm.a1,Xvl,na.rm=TRUE) # predict validation values
+data.frame(fold = "All",
+train.error = mean((predYtr - Ytr)^2), # compute and store training error
+val.error = mean((predYvl - Yvl)^2)) # compute and store test error
+```
+
+
+6)
+
+a.
+
+```{r}
+ggplot(data=Wage, aes(age, wage)) +
+    geom_point(color='red') +
+    geom_smooth(color='blue')
+    labs(title='Relationship between Wage and Age')
+
+```
+
+b.i.
+```{r}
+df = data.frame( wage= Wage$wage, age = Wage$age )
+Xvl<-data.frame(poly(df$age, degree=10, raw=FALSE))
+Yvl<-data.frame(df$wage)
+colnames(Yvl)<-"Wage"
+Wage_data=cbind(Yvl,Xvl)
+lm.Wage<-lm(Wage~.,data=Wage_data)
+lm.Wage
+predYtr = predict(lm.Wage,na.rm=TRUE) # predict training values
+predYvl = predict(lm.Wage,Xvl,na.rm=TRUE) # predict validation values
+data.frame(fold = "All",
+train.error = mean((predYtr - Ytr)^2), # compute and store training error
+val.error = mean((predYvl - Yvl)^2)) # compute and store test error
+
+
+```
+
+b.ii.
+
+```{r}
+IDs<-1:3000
+G=cut(IDs,breaks=5,labels=FALSE)
+IDs=sample(3000,3000, replace=FALSE)
+grouper<-cbind(G,IDs) 
+grouper<-grouper[order(grouper[,2]),]
+Wage_data$Group<-grouper[,1]
+rm(grouper,G,IDs)
+```
+
+```{r}
+
+do.chunk2 <- function(chunkid, chunkdef, dat){ # function argument
+train = (chunkdef != chunkid)
+Xtr = dat[train,2:11] # get training set
+Ytr = dat[train,1] # get true response values in trainig set
+Xvl = dat[!train,2:11] # get validation set
+Yvl = dat[!train,1] # get true response values in validation set
+
+lm.Wage <- lm(Wage~., data = dat[train,1:11])
+predYtr = predict(lm.Wage) # predict training values
+predYvl = predict(lm.Wage,Xvl,na.rm=TRUE) # predict validation values
+data.frame(fold = chunkid,
+train.error = mean((predYtr - Ytr)^2), # compute and store training error
+val.error = mean((predYvl - Yvl)^2)) # compute and store test error
+}
+#do.chunk(1,algae.med$Group,algae.med)
+
+lapply(1:5,  FUN = do.chunk2, chunkdef=Wage_data$Group , dat=Wage_data)
+```
+
+```{r}
+do.chunk3 <- function(degrees, dat){ # function argument
+
+Xvl = dat[,2:11] # get validation set
+Yvl = dat[,1] # get true response values in validation set
+
+lm.Wage <- lm(Wage~., data = dat[train,1:(1+degrees)])
+predYtr = predict(lm.Wage) # predict training values
+predYvl = predict(lm.Wage,Xvl,na.rm=TRUE) # predict validation values
+data.frame(max_degrees= degrees,
+train.error = mean((predYtr - Ytr)^2), # compute and store training error
+val.error = mean((predYvl - Yvl)^2)) # compute and store test error
+}
+
+lapply(1:10,  FUN = do.chunk3 , dat=Wage_data)
+
+```
+
+7) Proof of Bias Variance Decomposition
+
+$$\text{MSE} = \text{Variance} + \text{Bias}^2$$
+
+To prove this identity, we need to expand the terms with the formal definitions of MSE, variance, and bias. from there, the key to this proof is realizing that theta hat (our estimator) is a random variable and that the expected value of a random variable is a constant:
+
+$$\text{E}[(\hat{\theta}-\theta)^2] = \text{E}[(\hat{\theta}-\text{E}(\hat{\theta)})^2] + \text{E}[(\hat{\theta}-\theta)]^2$$
+
+We can let _u_ be the expected value of our estimator to simplify notation. Then add and subtract to the MSE side (the equivalent of adding 0) to see if we can rearrange left hand side terms to reflect the right side, proving the identity.
+$$u = E(\hat{\theta})$$
+$$\text{E}[(\hat{\theta}-u+u-\theta)^2]$$
+
+We square the expression and then distribute the Expected value operation to each of the three terms on the left hand side of the equation
+
+
+$$\text{E}[(\hat{\theta}-u)^2]+\text{E}[2(\hat{\theta}-u)(u-\theta)]+\text{E}[(u-\theta)^2]$$
+
+With this rearrangement we see that one term has appeared, the variance is the first term on the left hand side. Now we recognize that the middle term is in fact 0, since 
+
+$$\text{E}[(\hat{\theta}-u)] = \text{E}(\hat{\theta})-\text{E}(\hat{\theta}) = 0$$
+We substitue the expected value of the estimator back in for u to get the bias term. The leftover expected value is now operating on a constant, the bias term and thus the notation can be removed.
+
+$$\text{E}[(\hat{\theta}-u)^2]+\text{E}[(\text{E}(\hat{\theta})-\theta)^2]$$
+Outward E term is removed since it is operating on a constant and not a random variable. We also substitue the expected value of the estimator back in for u.
+
+$$\text{E}[(\hat{\theta}-\text{E}(\hat{\theta}))^2]+(\text{E}(\hat{\theta})-\theta)^2$$
+
+This is equal to the right hand side of the equation, clearly shown once we sub in the expected value of the estimator back in for the variance term. Proved!
+
+$$\text{E}[(\hat{\theta}-u)^2]+(\text{E}(\hat{\theta})-\theta)^2 = \text{E}[(\hat{\theta}-\text{E}(\hat{\theta}))^2]+(\text{E}(\hat{\theta})-\theta)^2$$
+
+8) Distance Metrics
+
+Euclidean Distance or L2 Norm
+From lecture on knn and distance measures - http://minify.link/3dH
+$$\|x - y\|_2 =  \left(\sum_{j=1}^n |x_j - y_j|^2\right)^{1/2}$$
+
+Positivity) The square of an absolute number is positive or zero because an absolute number is positive or zero. The summation of a series of positive numbers is also positive or zero. The square root of a positive number is positive or zero, so this metric always gives a positive number or 0.
+
+Symmetry) Switching x and y around will not change the the value of the absolute value of the difference. The definition of the absolute value operator shows this. |x-y| = |y-x|
+
+### Everything below here is not finished and are notes
+Triangle Inequality) hint (half-remembered): add 0 to one side, rearrange terms and then apply cauchy schwartz inequality to both sides to get both sides of the triangle?
+https://en.wikipedia.org/wiki/Cauchy%E2%80%93Schwarz_inequality
+
+in the future there will not be questions like this.
+
+$$\left(\sum_{j=1}^n |x_j - z_j|^2\right)^{1/2} \leq\left(\sum_{j=1}^n |x_j - y_j|^2\right)^{1/2} + \left(\sum_{j=1}^n |y_j - z_j|^2\right)^{1/2}$$
+square both sides, get cross term, apply triangle inequality for absolute value - Franky (seemed unsure if I was using the right form of the equation for distance and I am unsure if IU should be using the norm of distance or the equation for distance between two points)
+
+$$L_\infty$$ of L Infinity Norm
+
+
+
+
+
+

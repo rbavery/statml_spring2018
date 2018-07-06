@@ -1,0 +1,322 @@
+---
+title: "Homework Assignment 2"
+author: "Ryan Avery, Meet Gala"
+date: "4/29/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tree)
+library(plyr)
+library(randomForest)
+library(class)
+library(rpart)
+library(maptree)
+library(ROCR)
+```
+
+```{r }
+spam <- read_table2("spambase.tab", guess_max=2000)
+spam <- spam %>%
+mutate(y = factor(y, levels=c(0,1), labels=c("good", "spam"))) %>% # label as factors
+mutate_at(.vars=vars(-y), .funs=scale) # scale others
+
+calc_error_rate <- function(predicted.value, true.value){
+return(mean(true.value!=predicted.value))
+}
+
+records = matrix(NA, nrow=3, ncol=2)
+colnames(records) <- c("train.error","test.error")
+rownames(records) <- c("knn","tree","logistic")
+```
+
+```{r}
+set.seed(1)
+test.indices = sample(1:nrow(spam), 1000)
+spam.train=spam[-test.indices,]
+spam.test=spam[test.indices,]
+
+nfold = 10
+set.seed(1)
+folds = seq.int(nrow(spam.train)) %>% ## sequential obs ids
+cut(breaks = nfold, labels=FALSE) %>% ## sequential fold ids
+sample ## random fold ids
+```
+
+1. A k value of 1 leads to smallest estimated test error. We found this by manually testing each k in kvec.
+
+```{r}
+
+
+do.chunk <- function(chunkid, folddef, Xdat, Ydat, k){
+train = (folddef!=chunkid)
+Xtr = Xdat[train,]
+Ytr = Ydat[train]
+Xvl = Xdat[!train,]
+Yvl = Ydat[!train]
+## get classifications for current training chunks
+predYtr = knn(train = Xtr, test = Xtr, cl = Ytr, k = k)
+## get classifications for current test chunk
+predYvl = knn(train = Xtr, test = Xvl, cl = Ytr, k = k)
+data.frame(train.error = calc_error_rate(predYtr, Ytr),
+val.error = calc_error_rate(predYvl, Yvl))
+}
+Xdat=spam.train[,1:57]
+Ydat=as.vector(spam.train$y)
+```
+
+```{r}
+kvec = c(1, seq(10, 50, length.out=5))
+z=data.frame()
+
+min=9999
+for (i in kvec ){test_error=c()
+  for (j in range(10)){test_error=append(test_error,
+      do.chunk(chunkid=j, folds, Xdat,Ydat, k=i)$val.error)
+  }
+  if( min > mean(test_error)){best.kfold = i
+  min = mean(test_error)}
+  }
+  
+
+print(paste("The best choice of k is:" , as.character(best.kfold),sep=' '))
+
+
+```
+
+2. The function do.chunk already calculates the errors from the predicted class labels that are asked for in this question. Below we assign these values to records
+```{r}
+knn_train_pred = knn(train = spam.train[1:57], test = spam.train[1:57],
+      cl = spam.train$y, k = best.kfold)
+
+knn_test_pred = knn(train = spam.train[1:57], test = spam.test[1:57], 
+      cl = spam.train$y, k = best.kfold)
+
+conf.train = table(predicted=knn_train_pred, true=spam.train$y)
+conf.test = table(predicted=knn_test_pred, true=spam.test$y)
+
+records[1] = 1 - sum(diag(conf.train)/sum(conf.train))
+records[1,2] =1 - sum(diag(conf.test)/sum(conf.test))
+
+```
+
+3. Decisison Tree Method
+
+
+```{r}
+control = tree.control(minsize=5,mindev = 1e-5, nobs=nrow(spam.train))
+spamtree = tree(y~.,data = spam.train,control = control)
+summary(spamtree)
+```
+
+```{r}
+
+pruned_spamtree = prune.tree(tree = spamtree, best = 10)
+draw.tree(tree = pruned_spamtree, size=2, cex=.5, nodeinfo=TRUE)
+```
+
+5. 
+```{r}
+cv = cv.tree(spamtree,FUN=prune.misclass, K=10, rand=folds)
+best.cv = min(cv$size[which(cv$dev == min(cv$dev, na.rm = TRUE)) ])
+cv$size
+print(best.cv)
+print('is the best')
+```
+37 is the best size of the tree because it is simplest and reduces misclassification error. On the plot it is indicated in green.
+```{r}
+plot(cv$size, cv$dev, col='red')
+points(best.cv, min(cv$dev, na.rm = TRUE),col='green')
+```
+
+6.
+```{r}
+
+prunedtree.pruneed = prune.tree(tree = spamtree, best = best.cv)
+pruned.predict.train = predict(prunedtree.pruneed, spam.train, type="class")
+pruned.predict.test = predict(prunedtree.pruneed, spam.test, type="class")
+
+testtable = table(pruned.predict.test, spam.test$y)
+traintable = table(pruned.predict.train, spam.train$y)
+
+testerror = 1-sum(diag(testtable))/sum(testtable)
+trainerror = 1-sum(diag(traintable))/sum(traintable)
+
+records[2]=trainerror
+records[2,2]=testerror
+```
+
+7.
+
+$$  \normalsize  \ p(z) =  \frac{e^{z}}{1+e^{z}} $$
+Subtracting from 1:
+$$  \normalsize  \ 1 - p(z) =   1 - \frac{e^{z}}{1+e^{z}} =  \frac{1}{1+e^{z}} $$ 
+Dividing the original equation by the second:
+$$  \normalsize  \frac{p(z)}{1 - p(z)}  =  e^{z} $$ 
+Take log on both sides:
+$$  \normalsize ln \huge( \normalsize{\frac{p(z)}{1 - p(z)}} \huge )  \normalsize =  z $$ 
+Since: 
+$$ \normalsize z(p(z))  =  p^{-1}(p(z))  =  z $$
+$$ \normalsize z(p)  =  \frac{p}{1 - p} $$
+
+8.
+
+```{r}
+k=glm.fit = glm(y ~ .,
+              data=spam.train, family=binomial)
+summary(k)
+```
+```{r}
+# Specify type="response" to get the estimated probabilities
+prob.training = predict(k, type="response")
+
+spam.train = spam.train %>%
+mutate(predSPAM=as.factor(ifelse(prob.training<=0.5, "good", "spam")))
+
+train_results<-as.data.frame(table(pred=spam.train$predSPAM, true=spam.train$y))
+train_results = train_results %>%
+  mutate(Rate=as.factor(train_results$Freq/ifelse(true=="good",
+    sum(train_results$Freq[train_results$true=="good"]), sum(train_results$Freq[train_results$true=="spam"]))))
+
+prob.test=predict(k, spam.test, type="response")
+spam.test = spam.test %>%
+mutate(predSPAM=as.factor(ifelse(prob.test<=0.5, "good", "spam")))
+
+test_results<-as.data.frame(table(pred=spam.test$predSPAM, true=spam.test$y))
+test_results = test_results %>%
+  mutate(Rate=as.factor(test_results$Freq/ifelse(true=="good",
+    sum(test_results$Freq[test_results$true=="good"]), sum(test_results$Freq[test_results$true=="spam"]))))
+
+# Confusion matrix (training error/accuracy)
+log.train.table = table(pred=spam.train$predSPAM, true=spam.train$y)
+# Confusion matrix (training error/accuracy)
+log.test.table = table(pred=spam.test$predSPAM, true=spam.test$y)
+
+# Test error rate (Classification Error)
+logtrainerror = 1-sum(diag(log.train.table))/sum(log.train.table)
+# Test error rate (Classification Error)
+logtesterror = 1-sum(diag(log.test.table))/sum(log.test.table)
+
+records[3]=logtrainerror
+records[3,2]=logtesterror
+```
+
+9. I am much more concerned with minimizing false positives than false negatives. If a user's important emails are misclassified as spam (a false positive) and those emails are hidden in their spam folder, they could miss important communications and be very angry with their email service provider. Nowadays, people in the workplace are quite sensitive to the issue of spam, so if a few spam emails make it through the spam filter to a user's primary inbox (a false negative), there's a good change that human will be able to recognize that email as spam and simply lose a little time deleting the email. I'd much rather have a given number of spam emails make it through the filter (false negatives) than a given number of important emails be wrongly classified as spam (false positive).
+
+10.
+
+$$ f_k (x) = \frac{1}{(2 \pi)^ {p/2} |\Sigma_k|^{1/2}} exp(-\frac{1}{2} (x-\mu_k)^{T} \Sigma_k^{-1}(x-\mu_k))$$
+
+$$ P(Y = 1 | X = x ) =  \frac{f_1(x) \pi_1}{f_1(x) \pi_1 + f_2(x) \pi_2}  $$
+$$Let \ The \ Classification \ treshold \ probability \ be: \ \tau $$
+Then, we get the probabilistic threshold decision boundry by following the inequality below:
+
+$$\frac{f_1(x) \pi_1}{f_1(x) \pi_1 + f_2(x) \pi_2} > \tau $$
+
+or 
+
+$$ 1 - \frac{f_1(x) \pi_1}{f_1(x) \pi_1 + f_2(x) \pi_2} < 1- \tau $$
+which translates to :
+$$ \frac{f_2(x) \pi_2}{f_1(x) \pi_1 + f_2(x) \pi_2} < 1- \tau$$
+since both sides are between 0 and 1 we can invert multiplicatively 
+
+$$ \frac{f_1(x) \pi_1 + f_2(x) \pi_2}{f_2(x) \pi_2} > \frac{1}{1- \tau}$$
+Substracting 1 from both sides and simplifying gives us:
+$$ \frac{f_1(x) \pi_1 }{f_2(x) \pi_2} > \frac{\tau}{1- \tau}$$
+$$ \frac{ \pi_1 \ |\Sigma_2|^{1/2} exp(-\frac{1}{2} (x-\mu_1)^{T} \Sigma_1^{-1}(x-\mu_1))}{\pi_2 \ |\Sigma_1|^{1/2} \exp(-\frac{1}{2} (x-\mu_2)^{T} \Sigma_2^{-1}(x-\mu_2))} > \frac {\tau}{1- \tau}$$
+
+Taking Natural Log on both sides:
+
+$$ log(\frac{ \pi_1 \ |\Sigma_2|^{1/2} exp(-\frac{1}{2} (x-\mu_1)^{T} \Sigma_1^{-1}(x-\mu_1))}{\pi_2 \ |\Sigma_1|^{1/2} \exp(-\frac{1}{2} (x-\mu_2)^{T} \Sigma_2^{-1}(x-\mu_2))}) > log(\frac {\tau}{1- \tau})$$
+
+$$ ln(\pi_1) +  (-\frac{1}{2} (x-\mu_1)^{T} \Sigma_1^{-1}(x-\mu_1)) - ln(\ |\Sigma_1|^{1/2}) - (ln(\pi_2) +  (-\frac{1}{2} (x-\mu_2)^{T} \Sigma_2^{-1}(x-\mu_2)) - ln(\ |\Sigma_2|^{1/2})) > \frac {\tau}{1- \tau}$$
+
+or:
+
+$$ \delta_1(x) - \delta_2(x) > log(\frac {\tau}{1- \tau}) $$
+is therefore our quadratic decision boundry.
+
+$$ for \  \tau = 0.5 :$$
+$$ \delta_1(x) - \delta_2(x) > 0$$
+
+11. Variable Standardization and Discretization
+```{r}
+algae <- read_table2("algaeBloom.txt", col_names=
+  c('season','size','speed','mxPH','mnO2','Cl','NO3','NH4',
+  'oPO4','PO4','Chla','a1','a2','a3','a4','a5', 'a6', 'a7'),
+  na='XXXXXXX')
+
+algae_log_filled <-  algae %>%
+  mutate_at(vars(c('mxPH','mnO2','Cl','NO3','NH4','oPO4','PO4','Chla')),  log) %>% 
+  mutate_at(vars(c('mxPH','mnO2','Cl','NO3','NH4','oPO4','PO4','Chla')),  
+    function (x) ifelse(is.na(x),median(x, na.rm=TRUE),x))
+
+algae_log_filled_transformed <- algae_log_filled %>% 
+  mutate_at(vars(c('a1')), function (x) ifelse(x > .5,'high','low'))
+algae_log_filled_transformed
+```
+
+
+12. Linear and Quadratic Discriminant Analysis
+a) LDA and ROC plot
+
+```{r}
+set.seed(1)
+test.indices.algae = sample(1:nrow(algae_log_filled_transformed), 40)
+algae.train=algae_log_filled_transformed[-test.indices.algae,]
+algae.test=algae_log_filled_transformed[test.indices.algae,]
+
+lda_result <- MASS::lda(a1~mxPH + mnO2 + Cl + NO3 + NH4 + oPO4 + 
+    PO4 + Chla, CV=TRUE, data=algae.train)
+lda_result
+
+ct <- table(algae.train$a1, lda_result$class)
+```
+
+```{r}
+# why does 'low' look correct here but not 'high'?
+ldapred = prediction(lda_result$posterior[,'low'],algae.train$a1)
+
+ldaperf = performance(ldapred, measure="tpr", x.measure="fpr")
+
+plot(ldaperf, col=2, lwd=3, main=" LDA ROC curve")
+abline(0,1)
+
+```
+
+
+```{r}
+set.seed(1)
+
+qda_result <- MASS::qda(a1~mxPH + mnO2 + Cl + NO3 + NH4 + oPO4 + 
+    PO4 + Chla, CV=TRUE, data=algae.train)
+qda_result
+
+ct <- table(algae.train$a1, qda_result$class)
+```
+
+```{r}
+
+qdapred = prediction(qda_result$posterior[,'low'],algae.train$a1)
+
+qdaperf = performance(qdapred, measure="tpr", x.measure="fpr")
+
+plot(qdaperf, col=2, lwd=3, main="QDA ROC curve")
+abline(0,1)
+
+```
+
+AUC for both models
+```{r}
+
+ldaauc = performance(ldapred, "auc")@y.values
+qdaauc = performance(qdapred, "auc")@y.values
+ldaauc
+qdaauc
+
+```
+
+If we use AUC as our measure, QDA has better performance than LDA, meaning there is an overally better ratio between the TPR and FPR (meaning a higher TPR relative to FPR for QDA than for LDA). QDA outperforms LDA because it makes less assumptions about the equality of variance of the predictor variables., which gives it lower bias but higher variance. LDA has higher bias but lower variance, but the overall mean squared error is higher for LDA than for QDA, as evidenced by the higher AUC value for QDA.

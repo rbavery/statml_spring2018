@@ -1,0 +1,195 @@
+---
+title: "Homework Assignment 4"
+author: "Ryan Avery, Meet Gala"
+date: "6/1/2018"
+output: pdf_document
+---
+
+```{r}
+library(tidyverse)
+library(tree)
+library(randomForest)
+library(gbm)
+library(ROCR)
+library(e1071)
+library(ISLR)
+library(imager)
+```
+
+a)
+
+$$ P ( j \notin S)\ where\ S \ is \ a  \ sample \ of \ size  \ n \ (with \ replacement) \ and \ j \in P \ where \ P \ is \ the  \ Population. $$
+This probability can be interpreted as the number of ways N spots can be filled with anything else but element j. Or :
+
+$$ P ( j \notin S) =  \bigg(\frac {n-1}{n} \bigg) ^n $$ 
+
+b)
+For n = 1000, this probability is: 
+
+$$ P ( j \notin S) =  \bigg(\frac {999}{1000} \bigg) ^{1000}  =  0.3676954.$$ 
+
+```{r}
+x <- c(1:1000)
+length(unique(sample(x,1000,replace=TRUE)))
+```
+```{r}
+load("faces_array.RData")
+face_mat <- sapply(1:1000, function(i) as.numeric(faces_array[, , i])) %>% t
+
+plot_face <- function(image_vector) {
+plot(as.cimg(t(matrix(image_vector, ncol=100))), axes=FALSE, asp=1)
+}
+
+```
+
+```{r}
+avg_face=colMeans(face_mat, na.rm = FALSE, dims = 1)
+plot_face(avg_face)
+```
+
+```{r,}
+pr.out=prcomp((face_mat),center = TRUE, scale = FALSE)
+
+```
+
+```{r}
+pr.var=pr.out$sdev ^2
+pve=pr.var/sum(pr.var)
+plot(pve[]*100, xlab="Principal Component",
+ylab="Proportion of Variance Explained (Percent)", ylim=c(0,50),type='b')
+
+```
+```{r}
+plot(cumsum(pve[0:10])*100, xlab="Principal Component ",
+ylab=" Cumulative Proportion of Variance Explained ", ylim=c(0,100), type='b')
+
+cumsum(pve[1:5])[5]*100
+
+```
+
+```{r}
+par(mar=rep(0.5,4), mfrow = c(4,4))
+for (i in 1:16)
+  plot_face(pr.out$rotation[,i])
+```
+
+```{r}
+par(mar=rep(0.5,4), mfrow = c(4,4))
+faces_pc1<-face_mat[order(pr.out$rotation[1,]),]
+#par(mar=rep(0.5,4), mfrow = c(4,4))
+for (i in 1:5)
+  plot_face(faces_pc1[i,])
+
+```
+```{r}
+par(mar=rep(0.5,4), mfrow = c(4,4))
+for (i in 996:1000)
+  plot_face(faces_pc1[i,])
+
+```
+
+
+```{r}
+faces_pc5<-face_mat[order(pr.out$rotation[5,]),]
+#par(mar=rep(0.5,4), mfrow = c(4,4))
+par(mar=rep(0.5,4), mfrow = c(4,4))
+for (i in 996:1000)
+  plot_face(faces_pc5[i,])
+for (i in 1:5)
+  plot_face(faces_pc5[i,])
+
+```
+```{r}
+dim(pr.out$x)
+par(mfrow=c(1, 5))
+for (i in c(10,50,100,300)){
+  compression<-pr.out$x[,1:i] %*% t(pr.out$rotation)[1:i,]
+  plot_face(compression[5,])+avg_face}
+```
+
+```{r}
+dim(Caravan)
+
+Caravan.train <- Caravan[1:1000,]
+Caravan.test <- Caravan[1001:5822,]
+
+
+```
+
+```{r}
+set.seed(1)
+boost.caravan  = gbm(ifelse(Purchase=="Yes",1,0)~., data=Caravan.train,
+                     distribution="bernoulli", n.trees=500, interaction.depth=4, shrinkage = 0.01 )
+```
+```{r}
+summary(boost.caravan)
+```
+
+```{r}
+rf.caravan = randomForest(Purchase ~ ., data=Caravan.train, mtry=3, ntree=500, importance=TRUE)
+rf.caravan
+```
+```{r}
+k<-(importance(rf.caravan))
+k[order(k[,3]),]
+```
+```{r}
+varImpPlot(rf.caravan)
+```
+
+```{r}
+
+yhat.boost = as.factor(ifelse(predict(boost.caravan, newdata = Caravan.test, n.trees=500, type = "response")>0.2,"Yes","No"))
+boost.err = table(pred = yhat.boost, truth = Caravan.test$Purchase)
+
+boost.err
+```
+
+```{r}
+yhat.rf = predict (rf.caravan, newdata = Caravan.test)
+rf.err = table(pred = yhat.rf, truth = Caravan.test$Purchase)
+rf.err
+rf.err[2,2]/sum(rf.err[2,])
+```
+```{r}
+qplot(nonlinear$X1,nonlinear$X2,color=nonlinear$Y)
+
+
+
+```
+
+```{r}
+# grid of points over sample space
+gr <- expand.grid(X1=seq(-5, 5, by=0.1), # sample points in X1
+                  X2=seq(-5, 5, by=0.1)) # sample points in X2
+```
+
+```{r}
+logistic.fit = glm(Y ~ X1 + X2 ,data=nonlinear, family=binomial)
+decision<-ifelse(predict(logistic.fit, gr, type="response")>0.5,1,0)
+qplot(gr[,1],gr[,2],color=decision)
+
+```
+
+```{r}
+nonlinear_poly=as.data.frame(poly(X,2,raw=TRUE))
+nonlinear_poly$Y=nonlinear$Y
+logistic.poly.fit = glm(Y ~. ,data=nonlinear_poly, family=binomial)
+decision<-ifelse(predict(logistic.poly.fit, as.data.frame(poly(as.matrix(gr),2,raw=TRUE)), type="response")>0.5,1,0)
+qplot(gr[,1],gr[,2],color=decision)
+
+summary(logistic.poly.fit)
+
+```
+```{r}
+
+nonlinear_poly=as.data.frame(poly(X,5,raw=TRUE))[c(1:6,11,15,18,20)]
+nonlinear_poly$Y=nonlinear$Y
+logistic.poly.fit = glm(Y ~. ,data=nonlinear_poly, family=binomial)
+decision<-ifelse(predict(logistic.poly.fit, as.data.frame(poly(as.matrix(gr),5,raw=TRUE))[c(1:6,11,15,18,20)], type="response")>0.5,1,0)
+qplot(gr[,1],gr[,2],color=decision)
+
+summary(logistic.poly.fit)
+c(1:6,11,15,18,20)
+```
+
